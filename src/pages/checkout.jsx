@@ -1,5 +1,5 @@
 import React from "react";
-import Topbar from "../components/Topbar";
+import Topbar from "../components/topbar";
 import Header from "../components/Header";
 import Mastercard from "../assets/mastercard.png";
 import Footer from "../components/footer";
