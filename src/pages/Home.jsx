@@ -1,6 +1,6 @@
 import React from "react";
 import TopBar from "../components/topbar";
-import Header from "../components/Header";
+import Header from "../components/header";
 import Hero from "../components/Hero";
 import BottomBanner from "../components/bottombanner";
 import Footer from "../components/footer";
