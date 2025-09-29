@@ -1,4 +1,4 @@
-import Topbar from "../components/topbar";
+import TopBar from "../components/topbar";
 import Header from "../components/header";
 import ChooseUs from "../components/chooseus";
 import Footer from "../components/footer";
