@@ -7,7 +7,7 @@ import WomensProducts from "../components/womensproducts";
 import Womensection from "../components/womensection";
 
 
-const Category = () => {
+const WomenCategory = () => {
   return (
     <div className="bg-white">
         <TopBar/>
@@ -20,4 +20,4 @@ const Category = () => {
   );
 };
 
-export default Category;
+export default WomenCategory;

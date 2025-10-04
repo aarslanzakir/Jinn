@@ -10,6 +10,7 @@ import WomensCollection from "../components/womenscollectionHero";
 import WomensProducts from "../components/womensproducts";
 import MensCollection from "../components/menscollectionHero";
 import MensProducts from "../components/mensproducts";
+// import RecommendedProducts from "../components/recommendedProducts";
 import PerfectMatch from "../components/perfectmatch";
 import CustomerReviews from "../components/customerreviews";
 import ChooseUs from "../components/chooseus";
@@ -27,6 +28,7 @@ function Home() {
       <WomensProducts/>
       <MensCollection/>
       <MensProducts/>
+      {/* <RecommendedProducts/> */}
       <PerfectMatch/>
       <CustomerReviews/>
       <ChooseUs/>

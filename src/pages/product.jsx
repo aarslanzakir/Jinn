@@ -13,26 +13,159 @@ import Recommended from "../components/recommended";
 import BottomBanner from "../components/bottombanner";
 import Chooseus  from "../components/chooseus";
 import Footer from "../components/footer";
-import { useNavigate } from "react-router-dom"; 
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { productAPI, utils } from "../services/api";
+import { getImageUrl } from "../config/api";
+import cartService from "../services/cartService"; 
 
 export default function Product() {
+  const [searchParams] = useSearchParams();
+  const productId = searchParams.get('id');
+  
+  const [product, setProduct] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [isDescriptionOpen, setIsDescriptionOpen] = useState(true);
+  const [quantity, setQuantity] = useState(1);
+  const [selectedSize, setSelectedSize] = useState("41");
+  const [selectedColor, setSelectedColor] = useState(null);
+  const [rating, setRating] = useState(0);
+  const [hover, setHover] = useState(0);
+
+  const navigate = useNavigate();
+
   useEffect(() => {
     createIcons({ icons });
   }, []);
 
-  const [isDescriptionOpen, setIsDescriptionOpen] = useState(true);
-  const [quantity, setQuantity] = useState(1);
-  const [selectedSize, setSelectedSize] = useState("41");
-  const [rating, setRating] = useState(0);
-  const [hover, setHover] = useState(0);
+  useEffect(() => {
+    const fetchProduct = async () => {
+      if (!productId) {
+        setError('Product ID is required');
+        setLoading(false);
+        return;
+      }
 
-  const sizes = ["38", "39", "40", "41", "42", "43"];
-  const thumbnails = [shoes1, shoes2, shoes3, shoes1, shoes2, shoes3];
+      try {
+        setLoading(true);
+        const response = await productAPI.getProduct(productId);
+        setProduct(response.data.product);
+        
+        // Set default size and color
+        if (response.data.product.availableSizes && response.data.product.availableSizes.length > 0) {
+          setSelectedSize(response.data.product.availableSizes[0]);
+        }
+        if (response.data.product.availableColors && response.data.product.availableColors.length > 0) {
+          setSelectedColor(response.data.product.availableColors[0]);
+        }
+      } catch (err) {
+        console.error('Error fetching product:', err);
+        setError('Failed to load product');
+        // Use fallback product data
+        setProduct({
+          _id: productId,
+          title: "Regal Leather Starlet",
+          description: "Step into timeless sophistication with the Regal Leather Starlet. Handcrafted from premium quality leather, these classic brown lace-up shoes are designed for the modern gentleman who values both style and comfort.",
+          price: 5499,
+          oldPrice: 6999,
+          discountPercentage: 21,
+          availableSizes: ["38", "39", "40", "41", "42", "43"],
+          availableColors: [{ name: "Brown", code: "#8B4513" }],
+          mainImages: [{ url: "/uploads/products/regal-leather-starlet.jpg" }],
+          averageRating: 4.5,
+          ratingsQuantity: 120,
+          brand: "Regal",
+          material: "leather",
+          style: "loafers",
+          occasion: ["formal", "office"],
+          careInstructions: ["Polish regularly", "Store in dry place"],
+          weight: 400,
+          dimensions: { length: 32, width: 13, height: 8 }
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const navigate = useNavigate(); 
+    fetchProduct();
+  }, [productId]);
+
+  const handleAddToCart = () => {
+    if (!selectedSize) {
+      alert('Please select a size before adding to cart');
+      return;
+    }
+
+    // Add to cart using cart service
+    const cartItem = {
+      _id: product._id,
+      title: product.title,
+      price: product.price,
+      oldPrice: product.oldPrice,
+      mainImages: product.mainImages,
+      selectedSize: selectedSize,
+      quantity: quantity
+    };
+
+    cartService.addToCart(cartItem);
+    
+    // Show success message
+    alert(`${product.title} (Size: ${selectedSize}, Qty: ${quantity}) added to cart!`);
+  };
+
   const handleBuyNow = () => {
+    if (!selectedSize) {
+      alert('Please select a size before buying now');
+      return;
+    }
+
+    // Clear existing cart first to ensure only this product shows on checkout
+    cartService.clearCart();
+    
+    // Store single product info in localStorage for checkout
+    const cartItem = {
+      productId: product._id,
+      title: product.title,
+      price: product.price,
+      quantity: quantity,
+      size: selectedSize,
+      color: selectedColor?.name || 'Default',
+      image: getProductImage()
+    };
+    
+    localStorage.setItem('checkoutItems', JSON.stringify([cartItem]));
     navigate("/checkout"); 
   };
+
+  const getProductImage = () => {
+    if (product && product.mainImages && product.mainImages.length > 0) {
+      return getImageUrl(product.mainImages[0].url);
+    }
+    return regalleather;
+  };
+
+  const getThumbnails = () => {
+    if (product && product.mainImages && product.mainImages.length > 1) {
+      return product.mainImages.map(img => getImageUrl(img.url));
+    }
+    return [shoes1, shoes2, shoes3, shoes1, shoes2, shoes3];
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-lg">Loading product...</div>
+      </div>
+    );
+  }
+
+  if (error || !product) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-lg text-red-500">{error || 'Product not found'}</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -45,14 +178,14 @@ export default function Product() {
         {/* Left side - Product Images */}
         <div>
           <img
-            src={regalleather}
-            alt="Regal Leather Starlet"
+            src={getProductImage()}
+            alt={product.title}
             className="w-full rounded-2xl"
           />
 
           {/* Thumbnails */}
           <div className="grid grid-cols-3 gap-0 mt-4">
-            {thumbnails.map((img, i) => (
+            {getThumbnails().map((img, i) => (
               <div
                 key={i}
                 className="w-[140px] h-[130px] border border-gray-300 cursor-pointer flex items-center justify-center"
@@ -71,33 +204,39 @@ export default function Product() {
         <div>
           {/* Title & Price */}
           <h1 className="text-2xl font-roboto font-bold mb-2">
-            Regal Leather Starlet
+            {product.title}
           </h1>
           <div className="flex items-center gap-3 mb-3">
-            <p className="text-pink-600 text-xl font-bold">Rs 5,499</p>
-            <p className="line-through text-gray-500">Rs 6,999</p>
-            <span className="bg-pink-600 text-white text-sm px-2 py-1 rounded">
-              Save 20%
-            </span>
+            <p className="text-pink-600 text-xl font-bold">{utils.formatPrice(product.price)}</p>
+            {product.oldPrice && (
+              <p className="line-through text-gray-500">{utils.formatPrice(product.oldPrice)}</p>
+            )}
+            {product.discountPercentage && (
+              <span className="bg-pink-600 text-white text-sm px-2 py-1 rounded">
+                Save {product.discountPercentage}%
+              </span>
+            )}
           </div>
 
           {/* Sizes */}
           <div className="mb-4">
             <p className="font-lato font-bold">Size: {selectedSize}</p>
             <div className="flex gap-2 mt-2 flex-wrap">
-              {sizes.map((size) => (
-                <button
-                  key={size}
-                  onClick={() => setSelectedSize(size)}
-                  className={`w-10 h-10 rounded-full border flex items-center justify-center text-sm font-medium ${
-                    selectedSize === size
-                      ? "bg-pink-600 text-white border-pink-600"
-                      : "hover:border-pink-600"
-                  }`}
-                >
-                  {size}
-                </button>
-              ))}
+              {(product.availableSizes || ["38", "39", "40", "41", "42", "43"]).map((size) => {
+                const isSelected = selectedSize === size;
+                const buttonClass = isSelected 
+                  ? "w-10 h-10 rounded-full border flex items-center justify-center text-sm font-medium bg-pink-600 text-white border-pink-600"
+                  : "w-10 h-10 rounded-full border flex items-center justify-center text-sm font-medium hover:border-pink-600";
+                return (
+                  <button
+                    key={size}
+                    onClick={() => setSelectedSize(size)}
+                    className={buttonClass}
+                  >
+                    {size}
+                  </button>
+                );
+              })}
             </div>
             <button className="mt-2 text-sm font-lato font-bold text-black flex items-center gap-2">
               <i data-lucide="ruler-dimension-line"></i> Size Chart
@@ -132,7 +271,10 @@ export default function Product() {
                 </button>
               </div>
 
-              <button className="flex-1 border border-gray-300 py-3 rounded font-medium hover:bg-gray-100">
+              <button 
+                onClick={handleAddToCart}
+                className="flex-1 border border-gray-300 py-3 rounded font-medium hover:bg-gray-100 transition-colors"
+              >
                 Add To Cart
               </button>
             </div>
@@ -214,37 +356,49 @@ export default function Product() {
             {isDescriptionOpen && (
               <div className="text-black text-sm leading-relaxed space-y-3">
                 <p className="text-justify">
-                  Step into timeless sophistication with the Regal Leather
-                  Starlet. Handcrafted from premium quality leather, these
-                  classic brown lace-up shoes are designed for the modern
-                  gentleman who values both style and comfort. The sleek brogue
-                  detailing adds a refined charm, making them the perfect choice
-                  for formal events, business meetings, or smart casual outings.
+                  {product.description}
                 </p>
 
-                <p>
-                  <strong>Material:</strong> 100% Genuine Leather
-                </p>
-                <p>
-                  <strong>Color:</strong> Rich Tan Brown
-                </p>
-                <p>
-                  <strong>Design:</strong> Classic Oxford with Brogue Detailing
-                </p>
-                <p>
-                  <strong>Sole:</strong> Durable Rubber Sole with Cushioned
-                  Comfort
-                </p>
-                <p>
-                  <strong>Occasion:</strong> Formal, Semi-Formal, Business,
-                  Evening Wear
-                </p>
-
-                <p>
-                  Elevate your footwear collection with the unmatched elegance
-                  of the Regal Leather Starlet — where tradition meets modern
-                  sophistication.
-                </p>
+                {product.brand && (
+                  <p>
+                    <strong>Brand:</strong> {product.brand}
+                  </p>
+                )}
+                {product.material && (
+                  <p>
+                    <strong>Material:</strong> {product.material}
+                  </p>
+                )}
+                {product.style && (
+                  <p>
+                    <strong>Style:</strong> {product.style}
+                  </p>
+                )}
+                {product.availableColors && product.availableColors.length > 0 && (
+                  <p>
+                    <strong>Available Colors:</strong> {product.availableColors.map(color => color.name).join(', ')}
+                  </p>
+                )}
+                {product.occasion && product.occasion.length > 0 && (
+                  <p>
+                    <strong>Occasion:</strong> {product.occasion.join(', ')}
+                  </p>
+                )}
+                {product.careInstructions && product.careInstructions.length > 0 && (
+                  <div>
+                    <strong>Care Instructions:</strong>
+                    <ul className="list-disc list-inside ml-4">
+                      {product.careInstructions.map((instruction, index) => (
+                        <li key={index}>{instruction}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {product.weight && (
+                  <p>
+                    <strong>Weight:</strong> {product.weight}g
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -285,11 +439,7 @@ export default function Product() {
             >
               <Star
                 size={22}
-                className={`transition-colors ${
-                  starValue <= (hover || rating)
-                    ? "fill-pink-400 text-pink-400"
-                    : "text-black"
-                }`}
+                className={"transition-colors " + (starValue <= (hover || rating) ? "fill-pink-400 text-pink-400" : "text-black")}
               />
             </button>
           );

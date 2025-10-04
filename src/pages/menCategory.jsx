@@ -6,7 +6,7 @@ import Mensection from "../components/mensection";
 import MensCollection from "../components/menscollectionHero";
 
 
-const Category = () => {
+const MenCategory = () => {
   return (
     <div className="bg-white">
         <TopBar/>
@@ -19,4 +19,4 @@ const Category = () => {
   );
 };
 
-export default Category;
+export default MenCategory;

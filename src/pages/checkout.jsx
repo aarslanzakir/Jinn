@@ -1,11 +1,160 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Topbar from "../components/topbar";
 import Header from "../components/header";
 import Mastercard from "../assets/mastercard.png";
 import Footer from "../components/footer";
-import Regalleather from "../assets/regalleather.jpg"
+import Regalleather from "../assets/regalleather.jpg";
+import { orderAPI, utils } from "../services/api";
+import { useNavigate } from "react-router-dom";
+import cartService from "../services/cartService";
 
 const Checkout = () => {
+  const [checkoutItems, setCheckoutItems] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [orderData, setOrderData] = useState({
+    customerInfo: {
+      email: '',
+      phone: '',
+      firstName: '',
+      lastName: ''
+    },
+    shippingAddress: {
+      country: '',
+      firstName: '',
+      lastName: '',
+      address: '',
+      city: '',
+      phone: ''
+    },
+    paymentMethod: 'cod',
+    notes: ''
+  });
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    // First check if there are items in the cart
+    const cartItems = cartService.getCartItems();
+    
+    if (cartItems && cartItems.length > 0) {
+      // Convert cart items to checkout format
+      const formattedCartItems = cartItems.map(item => ({
+        productId: item.productId,
+        title: item.title,
+        price: item.price,
+        quantity: item.quantity,
+        size: item.size,
+        color: 'Default',
+        image: item.image || Regalleather
+      }));
+      setCheckoutItems(formattedCartItems);
+    } else {
+      // Check for single "Buy It Now" item in localStorage
+      const buyNowItems = localStorage.getItem('checkoutItems');
+      if (buyNowItems) {
+        setCheckoutItems(JSON.parse(buyNowItems));
+      } else {
+        // Fallback to default items if no items found
+        setCheckoutItems([
+          { productId: 1, title: "Regal Leather Starlet", price: 5499, quantity: 1, size: "39", image: Regalleather, color: 'Default' },
+          { productId: 2, title: "Regal Classic Loafers", price: 6999, quantity: 1, size: "42", image: Regalleather, color: 'Default' },
+          { productId: 3, title: "Regal Modern Sneakers", price: 4499, quantity: 1, size: "40", image: Regalleather, color: 'Default' },
+        ]);
+      }
+    }
+  }, []);
+
+  const handleInputChange = (section, field, value) => {
+    setOrderData(prev => ({
+      ...prev,
+      [section]: {
+        ...prev[section],
+        [field]: value
+      }
+    }));
+  };
+
+  const calculateTotal = () => {
+    return checkoutItems.reduce((total, item) => total + (item.price * item.quantity), 0);
+  };
+
+  const removeItem = (productId, size) => {
+    const updatedItems = checkoutItems.filter(
+      item => !(item.productId === productId && item.size === size)
+    );
+    setCheckoutItems(updatedItems);
+    
+    // Also remove from cart if it exists there
+    cartService.removeFromCart(productId, size);
+    
+    // Update localStorage if it's a "Buy It Now" item
+    if (updatedItems.length === 0) {
+      localStorage.removeItem('checkoutItems');
+    } else {
+      localStorage.setItem('checkoutItems', JSON.stringify(updatedItems));
+    }
+  };
+
+  const clearAllItems = () => {
+    setCheckoutItems([]);
+    cartService.clearCart();
+    localStorage.removeItem('checkoutItems');
+  };
+
+  const handleSubmitOrder = async (e) => {
+    e.preventDefault();
+    
+    if (checkoutItems.length === 0) {
+      alert('Your cart is empty. Please add some items before placing an order.');
+      return;
+    }
+    
+    if (!orderData.customerInfo.email || !orderData.shippingAddress.firstName || !orderData.shippingAddress.address || !orderData.shippingAddress.city) {
+      alert('Please fill in all required fields (Email, First Name, Address, City)');
+      return;
+    }
+
+    setLoading(true);
+    
+    try {
+      const orderPayload = {
+        customerInfo: {
+          email: orderData.customerInfo.email,
+          phone: orderData.customerInfo.phone,
+          firstName: orderData.shippingAddress.firstName,
+          lastName: orderData.shippingAddress.lastName
+        },
+        shippingAddress: orderData.shippingAddress,
+        paymentMethod: orderData.paymentMethod,
+        totalAmount: calculateTotal(),
+        notes: orderData.notes,
+        items: checkoutItems.map(item => ({
+          product: item.productId,
+          title: item.title,
+          quantity: item.quantity,
+          price: item.price,
+          size: item.size,
+          color: item.color || 'Default'
+        }))
+      };
+
+      const response = await orderAPI.createGuestOrder(orderPayload);
+      
+      // Clear both cart and checkout items after successful order
+      cartService.clearCart();
+      localStorage.removeItem('checkoutItems');
+      
+      // Redirect to success page or show success message
+      alert(`Order placed successfully! Order Number: ${response.data.order.orderNumber}`);
+      navigate('/');
+      
+    } catch (error) {
+      console.error('Error placing order:', error);
+      alert('Failed to place order. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div>
       <Topbar />
@@ -20,8 +169,18 @@ const Checkout = () => {
           <div>
             <h2 className="text-lg font-bold mb-4">Contact</h2>
             <input
-              type="text"
-              placeholder="Email Or Phone Number"
+              type="email"
+              placeholder="Email"
+              value={orderData.customerInfo.email}
+              onChange={(e) => handleInputChange('customerInfo', 'email', e.target.value)}
+              className="w-full border border-gray-300 rounded-md p-3 mb-3 focus:outline-none focus:ring-2 focus:ring-pink-500"
+              required
+            />
+            <input
+              type="tel"
+              placeholder="Phone Number"
+              value={orderData.customerInfo.phone}
+              onChange={(e) => handleInputChange('customerInfo', 'phone', e.target.value)}
               className="w-full border border-gray-300 rounded-md p-3 mb-3 focus:outline-none focus:ring-2 focus:ring-pink-500"
             />
             <div className="flex items-center space-x-2">
@@ -39,31 +198,46 @@ const Checkout = () => {
               <input
                 type="text"
                 placeholder="Country / Region"
+                value={orderData.shippingAddress.country}
+                onChange={(e) => handleInputChange('shippingAddress', 'country', e.target.value)}
                 className="w-full border border-gray-300 rounded-md p-3 focus:outline-none focus:ring-2 focus:ring-pink-500"
               />
               <input
                 type="text"
-                placeholder="Full Name"
+                placeholder="First Name"
+                value={orderData.shippingAddress.firstName}
+                onChange={(e) => handleInputChange('shippingAddress', 'firstName', e.target.value)}
                 className="w-full border border-gray-300 rounded-md p-3 focus:outline-none focus:ring-2 focus:ring-pink-500"
+                required
               />
               <input
                 type="text"
                 placeholder="Last Name"
+                value={orderData.shippingAddress.lastName}
+                onChange={(e) => handleInputChange('shippingAddress', 'lastName', e.target.value)}
                 className="w-full border border-gray-300 rounded-md p-3 focus:outline-none focus:ring-2 focus:ring-pink-500"
               />
               <input
                 type="text"
                 placeholder="Address"
+                value={orderData.shippingAddress.address}
+                onChange={(e) => handleInputChange('shippingAddress', 'address', e.target.value)}
                 className="w-full border border-gray-300 rounded-md p-3 focus:outline-none focus:ring-2 focus:ring-pink-500"
+                required
               />
               <input
                 type="text"
                 placeholder="City"
+                value={orderData.shippingAddress.city}
+                onChange={(e) => handleInputChange('shippingAddress', 'city', e.target.value)}
                 className="w-full border border-gray-300 rounded-md p-3 focus:outline-none focus:ring-2 focus:ring-pink-500"
+                required
               />
               <input
-                type="text"
+                type="tel"
                 placeholder="Phone"
+                value={orderData.shippingAddress.phone}
+                onChange={(e) => handleInputChange('shippingAddress', 'phone', e.target.value)}
                 className="w-full border border-gray-300 rounded-md p-3 focus:outline-none focus:ring-2 focus:ring-pink-500"
               />
             </div>
@@ -143,8 +317,12 @@ const Checkout = () => {
 
           {/* Pay Now Button */}
           <div className="mt-2 ">
-            <button className="w-full bg-pink-500 hover:bg-pink-600 text-white font-semibold py-3 rounded-md">
-              Pay Now
+            <button 
+              onClick={handleSubmitOrder}
+              disabled={loading}
+              className="w-full bg-pink-500 hover:bg-pink-600 text-white font-semibold py-3 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? 'Processing...' : 'Pay Now'}
             </button>
           </div>
 
@@ -169,7 +347,49 @@ const Checkout = () => {
 {/* ---------------- RIGHT SIDE (Order Summary Card) ---------------- */}
 <div className="w-full max-w-lg mx-auto bg-gray-100 border border-gray-300 shadow-lg rounded-xl p-6 sm:p-8 mt-4 mb-10 sm:mt-8 sm:mb-12 lg:mt-16 lg:mb-16">
 
-  <h2 className="text-lg font-bold mb-4">Order Summary</h2>
+  <div className="flex items-center justify-between mb-4">
+    <h2 className="text-lg font-bold">Order Summary</h2>
+    {checkoutItems.length > 0 && (
+      <button
+        onClick={clearAllItems}
+        className="text-sm text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded transition-colors"
+        title="Clear all items"
+      >
+        Clear All
+      </button>
+    )}
+  </div>
+
+  {checkoutItems.length === 0 ? (
+    <div className="text-center py-8">
+      <div className="text-gray-500 mb-4">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="48"
+          height="48"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="mx-auto mb-2"
+        >
+          <path d="M2.048 18.566A2 2 0 0 0 4 21h16a2 2 0 0 0 1.952-2.434l-2-9A2 2 0 0 0 18 8H6a2 2 0 0 0-1.952 1.566z" />
+          <path d="M8 11V6a4 4 0 0 1 8 0v5" />
+        </svg>
+        <p className="text-lg font-medium">Your cart is empty</p>
+        <p className="text-sm">Add some items to continue shopping</p>
+      </div>
+      <button
+        onClick={() => navigate('/')}
+        className="bg-pink-500 hover:bg-pink-600 text-white px-6 py-2 rounded-md font-medium transition-colors"
+      >
+        Continue Shopping
+      </button>
+    </div>
+  ) : (
+    <>
 
   {/* ✅ Mobile Table View */}
   <table className="w-full border-collapse mb-6 sm:hidden">
@@ -179,26 +399,44 @@ const Checkout = () => {
         <th className="p-2">Product</th>
         <th className="p-2">Size</th>
         <th className="p-2 text-right">Price</th>
+        <th className="p-2 text-center">Action</th>
       </tr>
     </thead>
     <tbody>
-      {[
-        { id: 1, name: "Regal Leather Starlet", size: "39", price: 5499, image: Regalleather },
-        { id: 2, name: "Regal Classic Loafers", size: "42", price: 6999, image: Regalleather },
-        { id: 3, name: "Regal Modern Sneakers", size: "40", price: 4499, image: Regalleather },
-      ].map((product) => (
-        <tr key={product.id} className="border-b last:border-0">
+      {checkoutItems.map((product) => (
+        <tr key={`${product.productId}-${product.size}`} className="border-b last:border-0">
           <td className="p-2">
             <img
-              src={product.image}
-              alt={product.name}
+              src={product.image || Regalleather}
+              alt={product.title}
               className="w-14 h-14 rounded-md object-contain bg-white"
             />
           </td>
-          <td className="p-2">{product.name}</td>
+          <td className="p-2">{product.title}</td>
           <td className="p-2">{product.size}</td>
           <td className="p-2 text-right font-semibold">
-            Rs {product.price.toLocaleString()}
+            {utils.formatPrice(product.price * product.quantity)}
+          </td>
+          <td className="p-2 text-center">
+            <button
+              onClick={() => removeItem(product.productId, product.size)}
+              className="text-red-500 hover:text-red-700 hover:bg-red-50 rounded-full p-1 transition-colors"
+              title="Remove item"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
           </td>
         </tr>
       ))}
@@ -207,27 +445,45 @@ const Checkout = () => {
 
   {/* ✅ Desktop / Tablet Flex View */}
   <div className="hidden sm:block">
-    {[
-      { id: 1, name: "Regal Leather Starlet", size: "39", price: 5499, image: Regalleather },
-      { id: 2, name: "Regal Classic Loafers", size: "42", price: 6999, image: Regalleather },
-      { id: 3, name: "Regal Modern Sneakers", size: "40", price: 4499, image: Regalleather },
-    ].map((product) => (
+    {checkoutItems.map((product) => (
       <div
-        key={product.id}
+        key={`${product.productId}-${product.size}`}
         className="flex items-center justify-between mb-6 border-b pb-4 last:border-b-0"
       >
         <div className="flex items-center space-x-3">
           <img
-            src={product.image}
-            alt={product.name}
+            src={product.image || Regalleather}
+            alt={product.title}
             className="w-20 h-20 rounded-md object-contain bg-white"
           />
           <div>
-            <h3 className="font-semibold">{product.name}</h3>
+            <h3 className="font-semibold">{product.title}</h3>
             <p className="text-sm text-gray-600">Size {product.size}</p>
+            <p className="text-sm text-gray-600">Qty: {product.quantity}</p>
           </div>
         </div>
-        <span className="font-semibold text-lg">Rs {product.price.toLocaleString()}</span>
+        <div className="flex items-center space-x-3">
+          <span className="font-semibold text-lg">{utils.formatPrice(product.price * product.quantity)}</span>
+          <button
+            onClick={() => removeItem(product.productId, product.size)}
+            className="text-red-500 hover:text-red-700 hover:bg-red-50 rounded-full p-2 transition-colors"
+            title="Remove item"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
       </div>
     ))}
   </div>
@@ -249,7 +505,7 @@ const Checkout = () => {
     <div className="flex justify-between">
       <span>Subtotal</span>
       <span>
-        Rs {([5499, 6999, 4499].reduce((a, b) => a + b, 0)).toLocaleString()}
+        {utils.formatPrice(calculateTotal())}
       </span>
     </div>
     <div className="flex justify-between">
@@ -259,10 +515,12 @@ const Checkout = () => {
     <div className="flex justify-between text-lg sm:text-xl pt-3">
       <span>Total</span>
       <span>
-        Rs {([5499, 6999, 4499].reduce((a, b) => a + b, 0)).toLocaleString()}
+        {utils.formatPrice(calculateTotal())}
       </span>
     </div>
   </div>
+    </>
+  )}
 </div>
 
       </div>
